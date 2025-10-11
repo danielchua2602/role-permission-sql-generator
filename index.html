@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Role Permission SQL Generator</title>
+    <style>
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+      body {
+        background-color: #f5f5f5;
+        padding: 20px;
+      }
+
+      label {
+        font-weight: bold;
+        color: #555;
+      }
+
+      input[type="text"],
+      select {
+        width: 250px;
+      }
+
+      input,
+      select,
+      textarea {
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+      }
+
+      button {
+        padding: 10px 20px;
+        background-color: #007bff;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+      }
+
+      button:hover {
+        background-color: #0056b3;
+      }
+
+      button.delete {
+        background-color: #dc3545;
+      }
+
+      button.delete:hover {
+        background-color: #c82333;
+      }
+
+      .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #fff;
+        border-radius: 2px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .form-section {
+        border: 1px solid #ddd;
+        border-radius: 5px;
+        padding: 15px;
+      }
+
+      .form-row {
+        display: flex;
+        gap: 20px;
+        /* align-items: center; */
+      }
+
+      .form-group {
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+
+      #pathInputFormGroup,
+      #actionSelectFormGroup {
+        display: none;
+      }
+
+      .entries-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 15px 0;
+      }
+
+      .entries-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 15px 0;
+      }
+
+      .entries-table th,
+      .entries-table td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: left;
+      }
+
+      .entries-table th {
+        background-color: #75b4f3;
+        font-weight: bold;
+      }
+
+      .entries-table tr:nth-child(even) {
+        background-color: #f9f9f9;
+      }
+
+      .entries-table tr:hover {
+        background-color: #e9ecef;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Role Permission SQL Generator</h1>
+
+      <div class="form-section">
+        <h2>Base Configurations</h2>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="urlPrefix">URL Prefix:</label>
+            <input
+              type="text"
+              id="urlPrefix"
+              class="url-input"
+              value="https://api-uat-intra.acp.aic.sg/"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-section">
+        <h2>Accessible Resource Entry</h2>
+
+        <!-- First Row -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="roleCodeSelect">Role Code:</label>
+            <select id="roleCodeSelect">
+              <option value="">Select a role...</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label for="serviceTypeSelect">Function:</label>
+            <select id="serviceTypeSelect">
+              <option value="">Select a function...</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Second Row -->
+        <div class="form-row">
+          <div class="form-group">
+            <label for="functionGroupInput">Function Group:</label>
+            <input
+              type="text"
+              id="functionGroupInput"
+              placeholder="Function Group"
+            />
+          </div>
+
+          <div id="actionSelectFormGroup" class="form-group">
+            <label for="actionSelect">Action:</label>
+            <select id="actionSelect"></select>
+          </div>
+        </div>
+
+        <!-- Third Row -->
+        <div class="form-row">
+          <div id="pathInputFormGroup" class="form-group">
+            <label for="pathInput">Path:</label>
+            <input type="text" id="pathInput" placeholder="Path" />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="createAccessibleResource" />
+              Create Accessible Resource
+            </label>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <button onclick="addEntry()">Add Entry</button>
+        </div>
+      </div>
+
+      <!-- Added Entries Section -->
+      <div class="form-section">
+        <h3>Added Entries</h3>
+        <table class="entries-table" id="entriesTable">
+          <thead>
+            <tr>
+              <th>Role Code</th>
+              <th>FunctionGroup</th>
+              <th>Function</th>
+              <th>Action</th>
+              <th>Path</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="entriesTableBody"></tbody>
+        </table>
+        <button class="delete">Delete Selected</button>
+      </div>
+    </div>
+    <script>
+      class RolePermissionGenerator {
+        constructor() {
+          this.entries = [];
+          this.services = ["user-org", "patient-form", "report"];
+          this.roleCode = [
+            "SYSTEM_ADMIN",
+            "INSTITUTIONAL_ADMIN",
+            "ENDORSING_OFFICER",
+          ];
+
+          this.loadRoleCodes();
+          this.loadServices();
+          this.setupServiceSelected();
+          this.setupActionSelect();
+        }
+
+        loadRoleCodes() {
+          const roleSelect = document.getElementById("roleCodeSelect");
+
+          this.roleCode.forEach((role) => {
+            const option = document.createElement("option");
+            option.value = role;
+            option.textContent = role;
+            roleSelect.appendChild(option);
+          });
+        }
+
+        loadServices() {
+          const serviceSelect = document.getElementById("serviceTypeSelect");
+
+          this.services.forEach((service) => {
+            const option = document.createElement("option");
+            option.value = service;
+            option.textContent = service;
+            serviceSelect.appendChild(option);
+          });
+        }
+
+        setupServiceSelected() {
+          const serviceSelect = document.getElementById("serviceTypeSelect");
+          const actionSelect = document.getElementById("actionSelect");
+          const functionGroupInput =
+            document.getElementById("functionGroupInput");
+          const actionSelectFormGroup = document.getElementById(
+            "actionSelectFormGroup"
+          );
+          const pathInputFormGroup =
+            document.getElementById("pathInputFormGroup");
+
+          const serviceActions = {
+            report: ["create", "read", "update", "delete"],
+            default: [
+              "create",
+              "read",
+              "update",
+              "delete",
+              "execute",
+              "search",
+            ],
+          };
+
+          const createDefaultOption = () => {
+            const option = document.createElement("option");
+            option.value = "";
+            option.textContent = "Select action...";
+            return option;
+          };
+
+          actionSelect.appendChild(createDefaultOption());
+
+          serviceSelect.addEventListener("change", (event) => {
+            const selectedService = event.target.value;
+
+            if (!selectedService) {
+              this.hideFormGroup(actionSelectFormGroup);
+              this.hideFormGroup(pathInputFormGroup);
+              return;
+            }
+
+            const actions =
+              serviceActions[selectedService] || serviceActions.default;
+
+            this.populateActionSelect(
+              actionSelect,
+              actions,
+              createDefaultOption
+            );
+
+            // if selected service is report, disable functionGroup input and with a default value of Report
+            if (selectedService === "report") {
+              functionGroupInput.value = "Report";
+              functionGroupInput.disabled = true;
+
+              this.showFormGroup(pathInputFormGroup);
+              pathInputFormGroup.querySelector("input").placeholder =
+                "endpoint/someEndpoint";
+            } else {
+              functionGroupInput.value = "";
+              functionGroupInput.placeholder = "Resource Type";
+              functionGroupInput.disabled = false;
+
+              this.hideFormGroup(pathInputFormGroup);
+            }
+
+            actionSelectFormGroup.style.display = "flex";
+          });
+        }
+
+        setupActionSelect() {
+          const actionSelect = document.getElementById("actionSelect");
+          const pathInputFormGroup =
+            document.getElementById("pathInputFormGroup");
+          const pathInput = document.getElementById("pathInput");
+          const serviceSelect = document.getElementById("serviceTypeSelect");
+
+          actionSelect.addEventListener("change", (event) => {
+            const selectedAction = event.target.value;
+
+            if (serviceSelect.value === "report") return;
+
+            if (selectedAction === "execute") {
+              this.showFormGroup(pathInputFormGroup);
+              pathInput.placeholder = "ResourceType/$operation";
+            } else {
+              this.hideFormGroup(pathInputFormGroup);
+            }
+          });
+        }
+
+        showFormGroup(formGroup) {
+          formGroup.style.display = "flex";
+        }
+
+        hideFormGroup(formGroup) {
+          formGroup.style.display = "none";
+        }
+
+        populateActionSelect(selectElement, actions, createDefaultOption) {
+          // Clear existing options
+          selectElement.innerHTML = "";
+
+          // Add default option
+          selectElement.appendChild(createDefaultOption());
+
+          // Add action options
+          actions.forEach((action) => {
+            const option = document.createElement("option");
+            option.value = action;
+            option.textContent = action;
+            selectElement.appendChild(option);
+          });
+        }
+
+        addEntry() {
+          const roleCode = document.getElementById("roleCodeSelect").value;
+          const functionGroup =
+            document.getElementById("functionGroupInput").value;
+          const functionName =
+            document.getElementById("serviceTypeSelect").value;
+          const action = document.getElementById("actionSelect").value;
+          const path = document.getElementById("pathInput").value;
+          const createAccessibleResource = document.getElementById(
+            "createAccessibleResource"
+          ).checked;
+
+          if (
+            !roleCode ||
+            !functionGroup ||
+            !functionName ||
+            !action ||
+            // Path value must have a value if action is execute or service is report
+            ((action === "execute" || functionName === "report") && !path)
+          ) {
+            alert("Please fill in all required fields.");
+            return;
+          }
+
+          // Trim the front of path if it starts with a slash
+          // Also trim any leading/trailing whitespace
+          // Make the first character uppercase
+          // Add entry path value if action is not execute and service is not report
+          if (action !== "execute" && functionName !== "report") {
+            // Check action and get functionGroup value
+          }
+
+          const entry = {
+            roleCode,
+            functionGroup,
+            functionName,
+            action,
+            path,
+            createAccessibleResource,
+          };
+
+          console.log(entry);
+        }
+      }
+
+      let app;
+
+      window.onload = function () {
+        app = new RolePermissionGenerator();
+      };
+
+      addEntry = function () {
+        app.addEntry();
+      };
+    </script>
+  </body>
+</html>
