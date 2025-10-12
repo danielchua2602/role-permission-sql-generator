@@ -135,12 +135,7 @@
         <div class="form-row">
           <div class="form-group">
             <label for="urlPrefix">URL Prefix:</label>
-            <input
-              type="text"
-              id="urlPrefix"
-              class="url-input"
-              value="https://api-uat-intra.acp.aic.sg/"
-            />
+            <input type="text" id="urlPrefix" class="url-input" value="https://api-uat-intra.acp.aic.sg/" />
           </div>
         </div>
       </div>
@@ -169,11 +164,7 @@
         <div class="form-row">
           <div class="form-group">
             <label for="functionGroupInput">Function Group:</label>
-            <input
-              type="text"
-              id="functionGroupInput"
-              placeholder="Function Group"
-            />
+            <input type="text" id="functionGroupInput" placeholder="Function Group" />
           </div>
 
           <div id="actionSelectFormGroup" class="form-group">
@@ -228,11 +219,7 @@
         constructor() {
           this.entries = [];
           this.services = ["user-org", "patient-form", "report"];
-          this.roleCode = [
-            "SYSTEM_ADMIN",
-            "INSTITUTIONAL_ADMIN",
-            "ENDORSING_OFFICER",
-          ];
+          this.roleCode = ["SYSTEM_ADMIN", "INSTITUTIONAL_ADMIN", "ENDORSING_OFFICER"];
 
           this.loadRoleCodes();
           this.loadServices();
@@ -265,24 +252,13 @@
         setupServiceSelected() {
           const serviceSelect = document.getElementById("serviceTypeSelect");
           const actionSelect = document.getElementById("actionSelect");
-          const functionGroupInput =
-            document.getElementById("functionGroupInput");
-          const actionSelectFormGroup = document.getElementById(
-            "actionSelectFormGroup"
-          );
-          const pathInputFormGroup =
-            document.getElementById("pathInputFormGroup");
+          const functionGroupInput = document.getElementById("functionGroupInput");
+          const actionSelectFormGroup = document.getElementById("actionSelectFormGroup");
+          const pathInputFormGroup = document.getElementById("pathInputFormGroup");
 
           const serviceActions = {
             report: ["create", "read", "update", "delete"],
-            default: [
-              "create",
-              "read",
-              "update",
-              "delete",
-              "execute",
-              "search",
-            ],
+            default: ["create", "read", "update", "delete", "execute", "search"],
           };
 
           const createDefaultOption = () => {
@@ -303,14 +279,9 @@
               return;
             }
 
-            const actions =
-              serviceActions[selectedService] || serviceActions.default;
+            const actions = serviceActions[selectedService] || serviceActions.default;
 
-            this.populateActionSelect(
-              actionSelect,
-              actions,
-              createDefaultOption
-            );
+            this.populateActionSelect(actionSelect, actions, createDefaultOption);
 
             // if selected service is report, disable functionGroup input and with a default value of Report
             if (selectedService === "report") {
@@ -318,8 +289,7 @@
               functionGroupInput.disabled = true;
 
               this.showFormGroup(pathInputFormGroup);
-              pathInputFormGroup.querySelector("input").placeholder =
-                "endpoint/someEndpoint";
+              pathInputFormGroup.querySelector("input").placeholder = "endpoint/someEndpoint";
             } else {
               functionGroupInput.value = "";
               functionGroupInput.placeholder = "Resource Type";
@@ -334,8 +304,7 @@
 
         setupActionSelect() {
           const actionSelect = document.getElementById("actionSelect");
-          const pathInputFormGroup =
-            document.getElementById("pathInputFormGroup");
+          const pathInputFormGroup = document.getElementById("pathInputFormGroup");
           const pathInput = document.getElementById("pathInput");
           const serviceSelect = document.getElementById("serviceTypeSelect");
 
@@ -379,34 +348,14 @@
 
         addEntry() {
           const roleCode = document.getElementById("roleCodeSelect").value;
-          const functionGroup =
-            document.getElementById("functionGroupInput").value;
-          const functionName =
-            document.getElementById("serviceTypeSelect").value;
+          const functionGroup = this.trimInput(document.getElementById("functionGroupInput").value);
+          const functionName = document.getElementById("serviceTypeSelect").value;
           const action = document.getElementById("actionSelect").value;
-          const path = document.getElementById("pathInput").value;
-          const createAccessibleResource = document.getElementById(
-            "createAccessibleResource"
-          ).checked;
+          const path = this.trimInput(document.getElementById("pathInput").value);
+          const createAccessibleResource = document.getElementById("createAccessibleResource").checked;
 
-          if (
-            !roleCode ||
-            !functionGroup ||
-            !functionName ||
-            !action ||
-            // Path value must have a value if action is execute or service is report
-            ((action === "execute" || functionName === "report") && !path)
-          ) {
-            alert("Please fill in all required fields.");
-            return;
-          }
-
-          // Trim the front of path if it starts with a slash
-          // Also trim any leading/trailing whitespace
-          // Make the first character uppercase
-          // Add entry path value if action is not execute and service is not report
-          if (action !== "execute" && functionName !== "report") {
-            // Check action and get functionGroup value
+          if (!this.validateRequiredFields(roleCode, functionGroup, functionName, action, path)) {
+            return alert("Please fill in all required fields.");
           }
 
           const entry = {
@@ -414,11 +363,42 @@
             functionGroup,
             functionName,
             action,
-            path,
+            path: this.generateEntryPath(action, path, functionGroup, functionName),
             createAccessibleResource,
           };
 
-          console.log(entry);
+          this.entries.push(entry);
+        }
+
+        // Trim leading and trailing whitespace
+        // Trim '/' from the start of the string
+        trimInput(inputString) {
+          return inputString.trim().replace(/^\/+/, "");
+        }
+
+        validateRequiredFields(roleCode, functionGroup, functionName, action, path) {
+          if (!roleCode || !functionGroup || !functionName || !action) {
+            return false;
+          }
+
+          // Path value must have a value if action is execute or service is report
+          if ((action === "execute" || functionName === "report") && !path) {
+            return false;
+          }
+
+          return true;
+        }
+
+        generateEntryPath(action, path, functionGroup, functionName) {
+          const isFhirService = functionName === "user-org" || functionName === "patient-form";
+
+          if (!isFhirService) return path;
+
+          if (action === "execute") return path;
+
+          if (action === "search") return `${functionGroup}/_search`;
+
+          return functionGroup;
         }
       }
 
