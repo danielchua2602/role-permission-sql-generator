@@ -48,6 +48,12 @@
         background-color: #0056b3;
       }
 
+      button.clear {
+        background-color: #ffffff;
+        border: 1px solid #ddd;
+        color: black;
+      }
+
       button.delete {
         background-color: #dc3545;
       }
@@ -116,12 +122,20 @@
         font-weight: bold;
       }
 
-      .entries-table tr:nth-child(even) {
+      .entries-table tr:hover {
         background-color: #f9f9f9;
       }
 
-      .entries-table tr:hover {
-        background-color: #e9ecef;
+      .selected-row {
+        background-color: #cfcfcf;
+      }
+
+      .output-area {
+        width: 100%;
+        height: 300px;
+        font-family: "Courier New", monospace;
+        font-size: 12px;
+        resize: vertical;
       }
     </style>
   </head>
@@ -134,14 +148,18 @@
 
         <div class="form-row">
           <div class="form-group">
-            <label for="urlPrefix">URL Prefix:</label>
-            <input type="text" id="urlPrefix" class="url-input" value="https://api-uat-intra.acp.aic.sg/" />
+            <label for="urlPrefixInput">URL Prefix:</label>
+            <input type="text" id="urlPrefixInput" value="https://api-uat-intra.acp.aic.sg/" />
+          </div>
+          <div class="form-group">
+            <label for="dbNameInput">Database Name:</label>
+            <input type="text" id="dbNameInput" value="ACP_ADMIN_DB_PROD" />
           </div>
         </div>
       </div>
 
       <div class="form-section">
-        <h2>Accessible Resource Entry</h2>
+        <h3>Accessible Resource Entry</h3>
 
         <!-- First Row -->
         <div class="form-row">
@@ -192,6 +210,7 @@
 
         <div class="form-row">
           <button onclick="addEntry()">Add Entry</button>
+          <button class="clear" onclick="clearEntry()">Clear</button>
         </div>
       </div>
 
@@ -206,12 +225,21 @@
               <th>Function</th>
               <th>Action</th>
               <th>Path</th>
-              <th></th>
+              <th>Create AR</th>
             </tr>
           </thead>
           <tbody id="entriesTableBody"></tbody>
         </table>
-        <button class="delete">Delete Selected</button>
+        <button class="delete" onclick="deleteSelectedEntries()">Delete Selected</button>
+        <div class="button-group">
+          <button onclick="generateSQL()">Generate SQL</button>
+        </div>
+      </div>
+
+      <!-- Generate Section -->
+      <div class="form-section">
+        <h3>Generated SQL</h3>
+        <textarea id="outputText" class="output-area" readonly></textarea>
       </div>
     </div>
     <script>
@@ -220,11 +248,13 @@
           this.entries = [];
           this.services = ["user-org", "patient-form", "report"];
           this.roleCode = ["SYSTEM_ADMIN", "INSTITUTIONAL_ADMIN", "ENDORSING_OFFICER"];
+          this.selectedRowIndexes = new Set();
 
           this.loadRoleCodes();
           this.loadServices();
           this.setupServiceSelected();
           this.setupActionSelect();
+          this.setupTableClickHandler();
         }
 
         loadRoleCodes() {
@@ -322,6 +352,180 @@
           });
         }
 
+        setupTableClickHandler() {
+          document.getElementById("entriesTableBody").addEventListener("click", (e) => {
+            const row = e.target.closest("tr");
+
+            // If there is an entry
+            if (row) {
+              row.classList.toggle("selected-row");
+
+              const rowIndex = Array.from(row.parentNode.children).indexOf(row);
+
+              if (this.selectedRowIndexes.has(rowIndex)) {
+                this.selectedRowIndexes.delete(rowIndex);
+              } else {
+                this.selectedRowIndexes.add(rowIndex);
+              }
+
+              console.log(this.selectedRowIndexes);
+            }
+          });
+        }
+
+        // onClick Handlers =========================================================================
+        addEntry() {
+          const roleCode = document.getElementById("roleCodeSelect").value;
+          const functionGroup = this.trimInput(document.getElementById("functionGroupInput").value);
+          const functionName = document.getElementById("serviceTypeSelect").value;
+          const action = document.getElementById("actionSelect").value;
+          const path = this.trimInput(document.getElementById("pathInput").value);
+          const createAccessibleResource = document.getElementById("createAccessibleResource").checked;
+
+          if (!this.validateRequiredFields(roleCode, functionGroup, functionName, action, path)) {
+            return alert("Please fill in all required fields.");
+          }
+
+          const entry = {
+            roleCode,
+            functionGroup,
+            functionName,
+            action,
+            path: this.generateEntryPath(action, path, functionGroup, functionName),
+            createAccessibleResource,
+          };
+
+          // TODO:
+          // If createAccessibleResource is checked,
+          // ensure no duplicate entries for the same functionGroup, functionName, action, path
+
+          this.entries.push(entry);
+          this.updateEntriesTable();
+        }
+
+        clearEntry() {
+          document.getElementById("roleCodeSelect").value = "";
+          document.getElementById("functionGroupInput").value = "";
+          document.getElementById("serviceTypeSelect").value = "";
+          document.getElementById("actionSelect").value = "";
+          document.getElementById("pathInput").value = "";
+          document.getElementById("createAccessibleResource").checked = false;
+
+          // Hide action and path form groups
+          this.hideFormGroup(document.getElementById("actionSelectFormGroup"));
+          this.hideFormGroup(document.getElementById("pathInputFormGroup"));
+        }
+
+        deleteSelectedEntries() {
+          if (this.selectedRowIndexes.size === 0) return;
+
+          this.entries = this.entries.filter((_, index) => !this.selectedRowIndexes.has(index));
+          this.updateEntriesTable();
+          this.selectedRowIndexes.clear();
+        }
+
+        generateSQL() {
+          if (this.entries.length === 0) {
+            alert("No entries added yet");
+            return "";
+          }
+
+          const urlPrefix =
+            document.getElementById("urlPrefixInput").value.trim() || "https://api-uat-intra.acp.aic.sg/";
+          const dbName = document.getElementById("dbNameInput").value.trim() || "ACP_ADMIN_DB_PROD";
+
+          let sql = `USE [${dbName}]\nGO\n\n`;
+          sql += "-- Declare Variables\n";
+
+          // Declare role id variables
+          const roleCodes = new Set();
+          this.entries.forEach((entry) => {
+            roleCodes.add(entry.roleCode);
+          });
+
+          roleCodes.forEach((roleCode) => {
+            sql += `DECLARE @${roleCode.replace(/-/g, "_")}RoleId nvarchar(64)\n`;
+          });
+
+          // Declare Accessible Resource Id variable
+          sql += "DECLARE @AccessibleResourceId nvarchar(64)\n\n";
+
+          // Set Role ids
+          sql += "-- Set Role Ids\n";
+          roleCodes.forEach((roleCode) => {
+            sql += `SELECT @${roleCode.replace(/-/g, "_")}RoleId = Id FROM dbo.[Role] WHERE Code = '${roleCode}'\n`;
+          });
+
+          sql += "\n";
+
+          // Group entries by role
+          // { SYSTEM_ADMIN: [entry1, entry2], INSTITUTIONAL_ADMIN: [entry3] }
+          const roles = {};
+          this.entries.forEach((entry) => {
+            const role = entry.roleCode;
+            if (!roles[role]) {
+              roles[role] = [];
+            }
+            roles[role].push(entry);
+          });
+
+          // Generate SQL for each role
+          Object.entries(roles).forEach(([roleCode, roleEntries]) => {
+            sql += `-- Role: ${roleCode}\n`;
+
+            // Generate SQL for each entry
+            roleEntries.forEach((entry) => {
+              // Create AccessibleResource if checkbox was selected
+              if (entry.createAccessibleResource) {
+                sql += `-- Create AccessibleResource for ${entry.path} - ${entry.action}\n`;
+                sql += "INSERT INTO [dbo].[AccessibleResource] (\n";
+                sql +=
+                  "    [Id], [VersionId], [FunctionGroup], [Function], [Action], [Category], [Description], [Path], [ViewOrder],\n";
+                sql +=
+                  "    [Meta_LastUpdated], [CreatedBy], [CreationDateTime], [ModifiedBy], [ModificationDateTime], [IsDeleted]\n";
+                sql += ") VALUES (\n";
+                sql += "    NEWID(), 1,\n";
+                sql += `    N'${entry.functionGroup}', N'${entry.functionName}', N'${entry.action}', N'api', N'${entry.functionGroup} ${entry.action} access', N'${entry.path}', 0,\n`;
+                sql +=
+                  "    NULL, N'A1C2D3E4-F5B6-47C8-9A01-2D3E4F5B6C78', GETUTCDATE(), N'A1C2D3E4-F5B6-47C8-9A01-2D3E4F5B6C78', GETUTCDATE(), 0\n";
+                sql += ")\n";
+                sql += `PRINT 'Created AccessibleResource for ${entry.path} - ${entry.action}'\n\n`;
+              }
+
+              sql += `-- Get Accessible Resource ID for ${entry.path} - ${entry.action}\n`;
+              sql += `SELECT @AccessibleResourceId = Id FROM [dbo].[AccessibleResource] WHERE [FunctionGroup]='${entry.functionGroup}' `;
+              sql += `AND [Function]='${entry.functionName}' AND [Action]='${entry.action}' AND [Path]='${entry.path}'\n\n`;
+
+              sql += "IF @AccessibleResourceId IS NOT NULL\n";
+              sql += "BEGIN\n";
+              sql += "    INSERT INTO [dbo].[RolePermission] (\n";
+              sql += "        [Id], [VersionId], \n";
+              sql +=
+                "        [Role_Reference], [Role_ReferenceResourceId], [Role_ReferenceResourceVersionId], [Role_ReferenceResourceType], [Role__exists], \n";
+              sql +=
+                "        [AccessibleResource_Reference], [AccessibleResource_ReferenceResourceId], [AccessibleResource_ReferenceResourceVersionId], [AccessibleResource_ReferenceResourceType], [AccessibleResource__exists], \n";
+              sql +=
+                "        [Meta_LastUpdated], [CreatedBy], [CreationDateTime], [ModifiedBy], [ModificationDateTime], [IsDeleted]\n";
+              sql += "    )\n";
+              sql += "    VALUES (\n";
+              sql += "        NEWID(), 1, \n";
+              sql += `        N'${urlPrefix}', @${roleCode.replace(/-/g, "_")}RoleId, N'1', N'Role', 1, \n`;
+              sql += `        N'${urlPrefix}', @AccessibleResourceId, N'1', N'AccessibleResource', 1, \n`;
+              sql +=
+                "        NULL, N'A1C2D3E4-F5B6-47C8-9A01-2D3E4F5B6C78', GETUTCDATE(), N'A1C2D3E4-F5B6-47C8-9A01-2D3E4F5B6C78', GETUTCDATE(), 0\n";
+              sql += "    )\n";
+              sql += `    PRINT 'Added permission for ${roleCode} to ${entry.path} - ${entry.action}'\n`;
+              sql += "END\n";
+              sql += "ELSE\n";
+              sql += `    PRINT 'WARNING: Resource not found for ${entry.path} - ${entry.action}'\n\n`;
+            });
+          });
+
+          document.getElementById("outputText").value = sql;
+          return sql;
+        }
+
+        // Helper Functions =========================================================================
         showFormGroup(formGroup) {
           formGroup.style.display = "flex";
         }
@@ -346,28 +550,19 @@
           });
         }
 
-        addEntry() {
-          const roleCode = document.getElementById("roleCodeSelect").value;
-          const functionGroup = this.trimInput(document.getElementById("functionGroupInput").value);
-          const functionName = document.getElementById("serviceTypeSelect").value;
-          const action = document.getElementById("actionSelect").value;
-          const path = this.trimInput(document.getElementById("pathInput").value);
-          const createAccessibleResource = document.getElementById("createAccessibleResource").checked;
+        updateEntriesTable() {
+          const tbody = document.getElementById("entriesTableBody");
+          tbody.innerHTML = "";
 
-          if (!this.validateRequiredFields(roleCode, functionGroup, functionName, action, path)) {
-            return alert("Please fill in all required fields.");
-          }
-
-          const entry = {
-            roleCode,
-            functionGroup,
-            functionName,
-            action,
-            path: this.generateEntryPath(action, path, functionGroup, functionName),
-            createAccessibleResource,
-          };
-
-          this.entries.push(entry);
+          this.entries.forEach((entry, index) => {
+            const row = tbody.insertRow();
+            row.insertCell(0).textContent = entry.roleCode;
+            row.insertCell(1).textContent = entry.functionGroup;
+            row.insertCell(2).textContent = entry.functionName;
+            row.insertCell(3).textContent = entry.action;
+            row.insertCell(4).textContent = entry.path;
+            row.insertCell(5).textContent = entry.createAccessibleResource ? "Yes" : "No";
+          });
         }
 
         // Trim leading and trailing whitespace
@@ -410,6 +605,18 @@
 
       addEntry = function () {
         app.addEntry();
+      };
+
+      clearEntry = function () {
+        app.clearEntry();
+      };
+
+      deleteSelectedEntries = function () {
+        app.deleteSelectedEntries();
+      };
+
+      generateSQL = function () {
+        app.generateSQL();
       };
     </script>
   </body>
