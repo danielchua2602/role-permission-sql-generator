@@ -54,12 +54,22 @@
         color: black;
       }
 
+      button.clear:hover {
+        background-color: #f9f9f9;
+      }
+
       button.delete {
         background-color: #dc3545;
       }
 
       button.delete:hover {
         background-color: #c82333;
+      }
+
+      .button-group {
+        display: flex;
+        padding-top: 12px;
+        gap: 10px;
       }
 
       .container {
@@ -79,12 +89,16 @@
         border: 1px solid #ddd;
         border-radius: 5px;
         padding: 15px;
+
+        display:flex;
+        flex-direction: column;
+        gap: 12px;
       }
 
       .form-row {
         display: flex;
         gap: 20px;
-        /* align-items: center; */
+        align-items: center;
       }
 
       .form-group {
@@ -101,13 +115,6 @@
       .entries-table {
         width: 100%;
         border-collapse: collapse;
-        margin: 15px 0;
-      }
-
-      .entries-table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 15px 0;
       }
 
       .entries-table th,
@@ -208,7 +215,7 @@
           </div>
         </div>
 
-        <div class="form-row">
+        <div class="button-group">
           <button onclick="addEntry()">Add Entry</button>
           <button class="clear" onclick="clearEntry()">Clear</button>
         </div>
@@ -230,8 +237,8 @@
           </thead>
           <tbody id="entriesTableBody"></tbody>
         </table>
-        <button class="delete" onclick="deleteSelectedEntries()">Delete Selected</button>
         <div class="button-group">
+          <button class="delete" onclick="deleteSelectedEntries()">Delete Selected</button>
           <button onclick="generateSQL()">Generate SQL</button>
         </div>
       </div>
