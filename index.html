@@ -90,7 +90,7 @@
         border-radius: 5px;
         padding: 15px;
 
-        display:flex;
+        display: flex;
         flex-direction: column;
         gap: 12px;
       }
@@ -156,7 +156,11 @@
         <div class="form-row">
           <div class="form-group">
             <label for="urlPrefixInput">URL Prefix:</label>
-            <input type="text" id="urlPrefixInput" value="https://api-uat-intra.acp.aic.sg/" />
+            <input
+              type="text"
+              id="urlPrefixInput"
+              value="https://api-uat-intra.acp.aic.sg/"
+            />
           </div>
           <div class="form-group">
             <label for="dbNameInput">Database Name:</label>
@@ -189,7 +193,11 @@
         <div class="form-row">
           <div class="form-group">
             <label for="functionGroupInput">Function Group:</label>
-            <input type="text" id="functionGroupInput" placeholder="Function Group" />
+            <input
+              type="text"
+              id="functionGroupInput"
+              placeholder="Function Group"
+            />
           </div>
 
           <div id="actionSelectFormGroup" class="form-group">
@@ -238,7 +246,9 @@
           <tbody id="entriesTableBody"></tbody>
         </table>
         <div class="button-group">
-          <button class="delete" onclick="deleteSelectedEntries()">Delete Selected</button>
+          <button class="delete" onclick="deleteSelectedEntries()">
+            Delete Selected
+          </button>
           <button onclick="generateSQL()">Generate SQL</button>
         </div>
       </div>
@@ -254,7 +264,20 @@
         constructor() {
           this.entries = [];
           this.services = ["user-org", "patient-form", "report"];
-          this.roleCode = ["SYSTEM_ADMIN", "INSTITUTIONAL_ADMIN", "ENDORSING_OFFICER"];
+          this.roleCode = [
+            "SYSTEM_ADMIN",
+            "INSTITUTIONAL_ADMIN",
+            "ENDORSING_OFFICER",
+            "CLUSTER_REPRESENTATIVE",
+            "VIEWER",
+            "TRAINING_ADMIN",
+            "IT_SUPPORT",
+            "FACILITATOR",
+            "COORDINATOR",
+            "PPC_FACILITATOR",
+            "TRANSCRIBER",
+            "GENERAL_FACILITATOR",
+          ].sort();
           this.selectedRowIndexes = new Set();
 
           this.loadRoleCodes();
@@ -289,13 +312,24 @@
         setupServiceSelected() {
           const serviceSelect = document.getElementById("serviceTypeSelect");
           const actionSelect = document.getElementById("actionSelect");
-          const functionGroupInput = document.getElementById("functionGroupInput");
-          const actionSelectFormGroup = document.getElementById("actionSelectFormGroup");
-          const pathInputFormGroup = document.getElementById("pathInputFormGroup");
+          const functionGroupInput =
+            document.getElementById("functionGroupInput");
+          const actionSelectFormGroup = document.getElementById(
+            "actionSelectFormGroup"
+          );
+          const pathInputFormGroup =
+            document.getElementById("pathInputFormGroup");
 
           const serviceActions = {
             report: ["create", "read", "update", "delete"],
-            default: ["create", "read", "update", "delete", "execute", "search"],
+            default: [
+              "create",
+              "read",
+              "update",
+              "delete",
+              "execute",
+              "search",
+            ],
           };
 
           const createDefaultOption = () => {
@@ -316,9 +350,14 @@
               return;
             }
 
-            const actions = serviceActions[selectedService] || serviceActions.default;
+            const actions =
+              serviceActions[selectedService] || serviceActions.default;
 
-            this.populateActionSelect(actionSelect, actions, createDefaultOption);
+            this.populateActionSelect(
+              actionSelect,
+              actions,
+              createDefaultOption
+            );
 
             // if selected service is report, disable functionGroup input and with a default value of Report
             if (selectedService === "report") {
@@ -326,7 +365,8 @@
               functionGroupInput.disabled = true;
 
               this.showFormGroup(pathInputFormGroup);
-              pathInputFormGroup.querySelector("input").placeholder = "endpoint/someEndpoint";
+              pathInputFormGroup.querySelector("input").placeholder =
+                "endpoint/someEndpoint";
             } else {
               functionGroupInput.value = "";
               functionGroupInput.placeholder = "Resource Type";
@@ -341,7 +381,8 @@
 
         setupActionSelect() {
           const actionSelect = document.getElementById("actionSelect");
-          const pathInputFormGroup = document.getElementById("pathInputFormGroup");
+          const pathInputFormGroup =
+            document.getElementById("pathInputFormGroup");
           const pathInput = document.getElementById("pathInput");
           const serviceSelect = document.getElementById("serviceTypeSelect");
 
@@ -360,36 +401,53 @@
         }
 
         setupTableClickHandler() {
-          document.getElementById("entriesTableBody").addEventListener("click", (e) => {
-            const row = e.target.closest("tr");
+          document
+            .getElementById("entriesTableBody")
+            .addEventListener("click", (e) => {
+              const row = e.target.closest("tr");
 
-            // If there is an entry
-            if (row) {
-              row.classList.toggle("selected-row");
+              // If there is an entry
+              if (row) {
+                row.classList.toggle("selected-row");
 
-              const rowIndex = Array.from(row.parentNode.children).indexOf(row);
+                const rowIndex = Array.from(row.parentNode.children).indexOf(
+                  row
+                );
 
-              if (this.selectedRowIndexes.has(rowIndex)) {
-                this.selectedRowIndexes.delete(rowIndex);
-              } else {
-                this.selectedRowIndexes.add(rowIndex);
+                if (this.selectedRowIndexes.has(rowIndex)) {
+                  this.selectedRowIndexes.delete(rowIndex);
+                } else {
+                  this.selectedRowIndexes.add(rowIndex);
+                }
               }
-
-              console.log(this.selectedRowIndexes);
-            }
-          });
+            });
         }
 
         // onClick Handlers =========================================================================
         addEntry() {
           const roleCode = document.getElementById("roleCodeSelect").value;
-          const functionGroup = this.trimInput(document.getElementById("functionGroupInput").value);
-          const functionName = document.getElementById("serviceTypeSelect").value;
+          const functionGroup = this.trimInput(
+            document.getElementById("functionGroupInput").value
+          );
+          const functionName =
+            document.getElementById("serviceTypeSelect").value;
           const action = document.getElementById("actionSelect").value;
-          const path = this.trimInput(document.getElementById("pathInput").value);
-          const createAccessibleResource = document.getElementById("createAccessibleResource").checked;
+          const path = this.trimInput(
+            document.getElementById("pathInput").value
+          );
+          const createAccessibleResource = document.getElementById(
+            "createAccessibleResource"
+          ).checked;
 
-          if (!this.validateRequiredFields(roleCode, functionGroup, functionName, action, path)) {
+          if (
+            !this.validateRequiredFields(
+              roleCode,
+              functionGroup,
+              functionName,
+              action,
+              path
+            )
+          ) {
             return alert("Please fill in all required fields.");
           }
 
@@ -397,8 +455,13 @@
             roleCode,
             functionGroup,
             functionName,
-            action,
-            path: this.generateEntryPath(action, path, functionGroup, functionName),
+            action: action === "search" ? "read" : action,
+            path: this.generateEntryPath(
+              action,
+              path,
+              functionGroup,
+              functionName
+            ),
             createAccessibleResource,
           };
 
@@ -426,7 +489,9 @@
         deleteSelectedEntries() {
           if (this.selectedRowIndexes.size === 0) return;
 
-          this.entries = this.entries.filter((_, index) => !this.selectedRowIndexes.has(index));
+          this.entries = this.entries.filter(
+            (_, index) => !this.selectedRowIndexes.has(index)
+          );
           this.updateEntriesTable();
           this.selectedRowIndexes.clear();
         }
@@ -438,8 +503,11 @@
           }
 
           const urlPrefix =
-            document.getElementById("urlPrefixInput").value.trim() || "https://api-uat-intra.acp.aic.sg/";
-          const dbName = document.getElementById("dbNameInput").value.trim() || "ACP_ADMIN_DB_PROD";
+            document.getElementById("urlPrefixInput").value.trim() ||
+            "https://api-uat-intra.acp.aic.sg/";
+          const dbName =
+            document.getElementById("dbNameInput").value.trim() ||
+            "ACP_ADMIN_DB_PROD";
 
           let sql = `USE [${dbName}]\nGO\n\n`;
           sql += "-- Declare Variables\n";
@@ -451,7 +519,10 @@
           });
 
           roleCodes.forEach((roleCode) => {
-            sql += `DECLARE @${roleCode.replace(/-/g, "_")}RoleId nvarchar(64)\n`;
+            sql += `DECLARE @${roleCode.replace(
+              /-/g,
+              "_"
+            )}RoleId nvarchar(64)\n`;
           });
 
           // Declare Accessible Resource Id variable
@@ -460,7 +531,10 @@
           // Set Role ids
           sql += "-- Set Role Ids\n";
           roleCodes.forEach((roleCode) => {
-            sql += `SELECT @${roleCode.replace(/-/g, "_")}RoleId = Id FROM dbo.[Role] WHERE Code = '${roleCode}'\n`;
+            sql += `SELECT @${roleCode.replace(
+              /-/g,
+              "_"
+            )}RoleId = Id FROM dbo.[Role] WHERE Code = '${roleCode}'\n`;
           });
 
           sql += "\n";
@@ -516,7 +590,10 @@
               sql += "    )\n";
               sql += "    VALUES (\n";
               sql += "        NEWID(), 1, \n";
-              sql += `        N'${urlPrefix}', @${roleCode.replace(/-/g, "_")}RoleId, N'1', N'Role', 1, \n`;
+              sql += `        N'${urlPrefix}', @${roleCode.replace(
+                /-/g,
+                "_"
+              )}RoleId, N'1', N'Role', 1, \n`;
               sql += `        N'${urlPrefix}', @AccessibleResourceId, N'1', N'AccessibleResource', 1, \n`;
               sql +=
                 "        NULL, N'A1C2D3E4-F5B6-47C8-9A01-2D3E4F5B6C78', GETUTCDATE(), N'A1C2D3E4-F5B6-47C8-9A01-2D3E4F5B6C78', GETUTCDATE(), 0\n";
@@ -568,7 +645,9 @@
             row.insertCell(2).textContent = entry.functionName;
             row.insertCell(3).textContent = entry.action;
             row.insertCell(4).textContent = entry.path;
-            row.insertCell(5).textContent = entry.createAccessibleResource ? "Yes" : "No";
+            row.insertCell(5).textContent = entry.createAccessibleResource
+              ? "Yes"
+              : "No";
           });
         }
 
@@ -578,7 +657,13 @@
           return inputString.trim().replace(/^\/+/, "");
         }
 
-        validateRequiredFields(roleCode, functionGroup, functionName, action, path) {
+        validateRequiredFields(
+          roleCode,
+          functionGroup,
+          functionName,
+          action,
+          path
+        ) {
           if (!roleCode || !functionGroup || !functionName || !action) {
             return false;
           }
@@ -592,7 +677,8 @@
         }
 
         generateEntryPath(action, path, functionGroup, functionName) {
-          const isFhirService = functionName === "user-org" || functionName === "patient-form";
+          const isFhirService =
+            functionName === "user-org" || functionName === "patient-form";
 
           if (!isFhirService) return path;
 
