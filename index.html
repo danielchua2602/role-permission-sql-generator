@@ -164,7 +164,11 @@
           </div>
           <div class="form-group">
             <label for="dbNameInput">Database Name:</label>
-            <input type="text" id="dbNameInput" value="ACP_ADMIN_DB_PROD" />
+            <input
+              type="text"
+              id="dbNameInput"
+              value="ACP.Admin.Service_DataRelational"
+            />
           </div>
         </div>
       </div>
@@ -329,6 +333,7 @@
               "delete",
               "execute",
               "search",
+              "history",
             ],
           };
 
@@ -455,7 +460,7 @@
             roleCode,
             functionGroup,
             functionName,
-            action: action === "search" ? "read" : action,
+            action: this.generateAction(action),
             path: this.generateEntryPath(
               action,
               path,
@@ -686,7 +691,17 @@
 
           if (action === "search") return `${functionGroup}/_search`;
 
+          if (action === "history") return `${functionGroup}/_history`;
+
           return functionGroup;
+        }
+
+        generateAction(action) {
+          if (action === "search") return "read";
+
+          if (action === "history") return "read";
+
+          return action;
         }
       }
 
