@@ -531,7 +531,9 @@
           });
 
           // Declare Accessible Resource Id variable
-          sql += "DECLARE @AccessibleResourceId nvarchar(64)\n\n";
+          sql += "DECLARE @AccessibleResourceId nvarchar(64)\n";
+          sql += "DECLARE @ExistingPermissionCount int\n";
+          sql += "DECLARE @ExistingResourceCount int\n\n";
 
           // Set Role ids
           sql += "-- Set Role Ids\n";
@@ -543,6 +545,49 @@
           });
 
           sql += "\n";
+
+          // Create AccessibleResources first (at the start)
+          const uniqueResources = new Map();
+          this.entries.forEach((entry) => {
+            if (entry.createAccessibleResource) {
+              const resourceKey = `${entry.functionGroup}-${entry.functionName}-${entry.action}-${entry.path}`;
+              if (!uniqueResources.has(resourceKey)) {
+                uniqueResources.set(resourceKey, entry);
+              }
+            }
+          });
+
+          if (uniqueResources.size > 0) {
+            sql += "-- Create Accessible Resources\n";
+            uniqueResources.forEach((entry) => {
+              sql += `-- Check if AccessibleResource already exists for ${entry.path} - ${entry.action}\n`;
+              sql +=
+                "SELECT @ExistingResourceCount = COUNT(*) FROM [dbo].[AccessibleResource]\n";
+              sql += `WHERE [FunctionGroup] = '${entry.functionGroup}'\n`;
+              sql += `AND [Function] = '${entry.functionName}'\n`;
+              sql += `AND [Action] = '${entry.action}'\n`;
+              sql += `AND [Path] = '${entry.path}'\n`;
+              sql += "AND [IsDeleted] = 0\n\n";
+
+              sql += "IF @ExistingResourceCount = 0\n";
+              sql += "BEGIN\n";
+              sql += "    INSERT INTO [dbo].[AccessibleResource] (\n";
+              sql +=
+                "        [Id], [VersionId], [FunctionGroup], [Function], [Action], [Category], [Description], [Path], [ViewOrder],\n";
+              sql +=
+                "        [Meta_LastUpdated], [CreatedBy], [CreationDateTime], [ModifiedBy], [ModificationDateTime], [IsDeleted]\n";
+              sql += "    ) VALUES (\n";
+              sql += "        NEWID(), 1,\n";
+              sql += `        N'${entry.functionGroup}', N'${entry.functionName}', N'${entry.action}', N'api', N'${entry.functionGroup} ${entry.action} access', N'${entry.path}', 1,\n`;
+              sql +=
+                "        NULL, N'A1C2D3E4-F5B6-47C8-9A01-2D3E4F5B6C78', GETUTCDATE(), N'A1C2D3E4-F5B6-47C8-9A01-2D3E4F5B6C78', GETUTCDATE(), 0\n";
+              sql += "    )\n";
+              sql += `    PRINT 'Created AccessibleResource for ${entry.path} - ${entry.action}'\n`;
+              sql += "END\n";
+              sql += "ELSE\n";
+              sql += `    PRINT 'SKIPPED: AccessibleResource already exists for ${entry.path} - ${entry.action}'\n\n`;
+            });
+          }
 
           // Group entries by role
           // { SYSTEM_ADMIN: [entry1, entry2], INSTITUTIONAL_ADMIN: [entry3] }
@@ -561,49 +606,50 @@
 
             // Generate SQL for each entry
             roleEntries.forEach((entry) => {
-              // Create AccessibleResource if checkbox was selected
-              if (entry.createAccessibleResource) {
-                sql += `-- Create AccessibleResource for ${entry.path} - ${entry.action}\n`;
-                sql += "INSERT INTO [dbo].[AccessibleResource] (\n";
-                sql +=
-                  "    [Id], [VersionId], [FunctionGroup], [Function], [Action], [Category], [Description], [Path], [ViewOrder],\n";
-                sql +=
-                  "    [Meta_LastUpdated], [CreatedBy], [CreationDateTime], [ModifiedBy], [ModificationDateTime], [IsDeleted]\n";
-                sql += ") VALUES (\n";
-                sql += "    NEWID(), 1,\n";
-                sql += `    N'${entry.functionGroup}', N'${entry.functionName}', N'${entry.action}', N'api', N'${entry.functionGroup} ${entry.action} access', N'${entry.path}', 0,\n`;
-                sql +=
-                  "    NULL, N'A1C2D3E4-F5B6-47C8-9A01-2D3E4F5B6C78', GETUTCDATE(), N'A1C2D3E4-F5B6-47C8-9A01-2D3E4F5B6C78', GETUTCDATE(), 0\n";
-                sql += ")\n";
-                sql += `PRINT 'Created AccessibleResource for ${entry.path} - ${entry.action}'\n\n`;
-              }
-
               sql += `-- Get Accessible Resource ID for ${entry.path} - ${entry.action}\n`;
               sql += `SELECT @AccessibleResourceId = Id FROM [dbo].[AccessibleResource] WHERE [FunctionGroup]='${entry.functionGroup}' `;
               sql += `AND [Function]='${entry.functionName}' AND [Action]='${entry.action}' AND [Path]='${entry.path}'\n\n`;
 
               sql += "IF @AccessibleResourceId IS NOT NULL\n";
               sql += "BEGIN\n";
-              sql += "    INSERT INTO [dbo].[RolePermission] (\n";
-              sql += "        [Id], [VersionId], \n";
+
+              // Check if permission already exists
+              sql += "    -- Check if permission already exists\n";
               sql +=
-                "        [Role_Reference], [Role_ReferenceResourceId], [Role_ReferenceResourceVersionId], [Role_ReferenceResourceType], [Role__exists], \n";
+                "    SELECT @ExistingPermissionCount = COUNT(*) FROM [dbo].[RolePermission]\n";
+              sql += `    WHERE [Role_ReferenceResourceId] = @${roleCode.replace(
+                /-/g,
+                "_"
+              )}RoleId\n`;
               sql +=
-                "        [AccessibleResource_Reference], [AccessibleResource_ReferenceResourceId], [AccessibleResource_ReferenceResourceVersionId], [AccessibleResource_ReferenceResourceType], [AccessibleResource__exists], \n";
+                "    AND [AccessibleResource_ReferenceResourceId] = @AccessibleResourceId\n";
+              sql += "    AND [IsDeleted] = 0\n\n";
+
+              sql += "    IF @ExistingPermissionCount = 0\n";
+              sql += "    BEGIN\n";
+              sql += "        INSERT INTO [dbo].[RolePermission] (\n";
+              sql += "            [Id], [VersionId], \n";
               sql +=
-                "        [Meta_LastUpdated], [CreatedBy], [CreationDateTime], [ModifiedBy], [ModificationDateTime], [IsDeleted]\n";
-              sql += "    )\n";
-              sql += "    VALUES (\n";
-              sql += "        NEWID(), 1, \n";
-              sql += `        N'${urlPrefix}', @${roleCode.replace(
+                "            [Role_Reference], [Role_ReferenceResourceId], [Role_ReferenceResourceVersionId], [Role_ReferenceResourceType], [Role__exists], \n";
+              sql +=
+                "            [AccessibleResource_Reference], [AccessibleResource_ReferenceResourceId], [AccessibleResource_ReferenceResourceVersionId], [AccessibleResource_ReferenceResourceType], [AccessibleResource__exists], \n";
+              sql +=
+                "            [Meta_LastUpdated], [CreatedBy], [CreationDateTime], [ModifiedBy], [ModificationDateTime], [IsDeleted]\n";
+              sql += "        )\n";
+              sql += "        VALUES (\n";
+              sql += "            NEWID(), 1, \n";
+              sql += `            N'${urlPrefix}', @${roleCode.replace(
                 /-/g,
                 "_"
               )}RoleId, N'1', N'Role', 1, \n`;
-              sql += `        N'${urlPrefix}', @AccessibleResourceId, N'1', N'AccessibleResource', 1, \n`;
+              sql += `            N'${urlPrefix}', @AccessibleResourceId, N'1', N'AccessibleResource', 1, \n`;
               sql +=
-                "        NULL, N'A1C2D3E4-F5B6-47C8-9A01-2D3E4F5B6C78', GETUTCDATE(), N'A1C2D3E4-F5B6-47C8-9A01-2D3E4F5B6C78', GETUTCDATE(), 0\n";
-              sql += "    )\n";
-              sql += `    PRINT 'Added permission for ${roleCode} to ${entry.path} - ${entry.action}'\n`;
+                "            NULL, N'A1C2D3E4-F5B6-47C8-9A01-2D3E4F5B6C78', GETUTCDATE(), N'A1C2D3E4-F5B6-47C8-9A01-2D3E4F5B6C78', GETUTCDATE(), 0\n";
+              sql += "        )\n";
+              sql += `        PRINT 'Added permission for ${roleCode} to ${entry.path} - ${entry.action}'\n`;
+              sql += "    END\n";
+              sql += "    ELSE\n";
+              sql += `        PRINT 'SKIPPED: Permission already exists for ${roleCode} to ${entry.path} - ${entry.action}'\n`;
               sql += "END\n";
               sql += "ELSE\n";
               sql += `    PRINT 'WARNING: Resource not found for ${entry.path} - ${entry.action}'\n\n`;
