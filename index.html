@@ -259,8 +259,18 @@
 
       <!-- Generate Section -->
       <div class="form-section">
-        <h3>Generated SQL</h3>
-        <textarea id="outputText" class="output-area" readonly></textarea>
+        <h3>Execute Script</h3>
+        <textarea
+          id="executeOutputText"
+          class="output-area"
+          readonly
+        ></textarea>
+        <h3>Rollback Script</h3>
+        <textarea
+          id="rollbackOutputText"
+          class="output-area"
+          readonly
+        ></textarea>
       </div>
     </div>
     <script>
@@ -514,6 +524,11 @@
             document.getElementById("dbNameInput").value.trim() ||
             "ACP_ADMIN_DB_PROD";
 
+          this.generateExecuteSQL(dbName, urlPrefix);
+          this.generateRollbackSQL(dbName);
+        }
+
+        generateExecuteSQL(dbName, urlPrefix) {
           let sql = `USE [${dbName}]\nGO\n\n`;
           sql += "-- Declare Variables\n";
 
@@ -656,8 +671,137 @@
             });
           });
 
-          document.getElementById("outputText").value = sql;
-          return sql;
+          document.getElementById("executeOutputText").value = sql;
+        }
+
+        generateRollbackSQL(dbName) {
+          let sql = `USE [${dbName}]\nGO\n\n`;
+          sql += "-- Declare Variables\n";
+
+          // Declare role id variables
+          const roleCodes = new Set();
+          this.entries.forEach((entry) => {
+            roleCodes.add(entry.roleCode);
+          });
+
+          roleCodes.forEach((roleCode) => {
+            sql += `DECLARE @${roleCode.replace(
+              /-/g,
+              "_"
+            )}RoleId nvarchar(64)\n`;
+          });
+
+          sql += "DECLARE @DeletedPermissionCount int\n";
+          sql += "DECLARE @DeletedResourceCount int\n";
+          sql += "DECLARE @RemainingPermissionCount int\n";
+          sql += "DECLARE @AccessibleResourceId nvarchar(64)\n\n";
+
+          // Set Role ids
+          sql += "-- Set Role Ids\n";
+          roleCodes.forEach((roleCode) => {
+            sql += `SELECT @${roleCode.replace(
+              /-/g,
+              "_"
+            )}RoleId = Id FROM dbo.[Role] WHERE Code = '${roleCode}'\n`;
+          });
+
+          sql += "\n";
+          sql +=
+            "PRINT 'Starting rollback of AccessibleResource and RolePermission changes...'\n\n";
+
+          // Group entries by unique AccessibleResource
+          const uniqueResources = new Map();
+          this.entries.forEach((entry) => {
+            const resourceKey = `${entry.functionGroup}-${entry.functionName}-${entry.action}-${entry.path}`;
+            if (!uniqueResources.has(resourceKey)) {
+              uniqueResources.set(resourceKey, {
+                entry: entry,
+                roles: new Set(),
+              });
+            }
+            uniqueResources.get(resourceKey).roles.add(entry.roleCode);
+          });
+
+          // Remove RolePermissions
+          sql +=
+            "-- Remove RolePermissions for all roles and specific resources\n";
+          sql += "PRINT 'Removing RolePermissions...'\n\n";
+
+          uniqueResources.forEach((resource, resourceKey) => {
+            const { entry, roles } = resource;
+            const roleIds = Array.from(roles)
+              .map((role) => `@${role.replace(/-/g, "_")}RoleId`)
+              .join(", ");
+
+            sql += `-- Remove permissions for ${entry.path}\n`;
+            sql += "DELETE rp FROM [dbo].[RolePermission] rp\n";
+            sql +=
+              "INNER JOIN [dbo].[AccessibleResource] ar ON rp.AccessibleResource_ReferenceResourceId = ar.Id\n";
+            sql += "WHERE rp.Role_ReferenceResourceId IN (\n";
+            sql += `    ${roleIds}\n`;
+            sql += ")\n";
+            sql += `AND ar.FunctionGroup = '${entry.functionGroup}'\n`;
+            sql += `AND ar.[Function] = '${entry.functionName}'\n`;
+            sql += `AND ar.Action = '${entry.action}'\n`;
+            sql += `AND ar.Path = '${entry.path}'\n`;
+            sql += "AND rp.IsDeleted = 0\n\n";
+
+            sql += "SET @DeletedPermissionCount = @@ROWCOUNT\n";
+            sql += `PRINT 'Deleted ' + CAST(@DeletedPermissionCount AS VARCHAR(10)) + ' RolePermissions for ${entry.path}'\n\n`;
+          });
+
+          sql += "PRINT 'Completed removing RolePermissions...'\n\n";
+
+          // Remove AccessibleResources (check ALL unique resources, not just those with createFlag)
+          if (uniqueResources.size > 0) {
+            sql +=
+              "-- Remove AccessibleResources ONLY if they are not being used by other permissions\n";
+            sql +=
+              "PRINT 'Checking and removing unused AccessibleResources...'\n\n";
+
+            uniqueResources.forEach((resource) => {
+              const entry = resource.entry;
+              sql += `-- Check and remove ${entry.path}\n`;
+              sql +=
+                "SELECT @AccessibleResourceId = Id FROM [dbo].[AccessibleResource]\n";
+              sql += `WHERE FunctionGroup = '${entry.functionGroup}'\n`;
+              sql += `AND [Function] = '${entry.functionName}'\n`;
+              sql += `AND Action = '${entry.action}'\n`;
+              sql += `AND Path = '${entry.path}'\n`;
+              sql += "AND IsDeleted = 0\n\n";
+
+              sql += "IF @AccessibleResourceId IS NOT NULL\n";
+              sql += "BEGIN\n";
+              sql +=
+                "    -- Check if any other RolePermissions are still using this resource\n";
+              sql += "    SELECT @RemainingPermissionCount = COUNT(*) \n";
+              sql += "    FROM [dbo].[RolePermission] \n";
+              sql +=
+                "    WHERE AccessibleResource_ReferenceResourceId = @AccessibleResourceId \n";
+              sql += "    AND IsDeleted = 0\n\n";
+
+              sql += "    IF @RemainingPermissionCount = 0\n";
+              sql += "    BEGIN\n";
+              sql +=
+                "        DELETE FROM [dbo].[AccessibleResource] WHERE Id = @AccessibleResourceId\n";
+              sql += "        SET @DeletedResourceCount = @@ROWCOUNT\n";
+              sql += `        PRINT 'Deleted AccessibleResource for ${entry.path} (no remaining permissions)'\n`;
+              sql += "    END\n";
+              sql += "    ELSE\n";
+              sql += `        PRINT 'SKIPPED: AccessibleResource for ${entry.path} still has ' + \n`;
+              sql +=
+                "              CAST(@RemainingPermissionCount AS VARCHAR(10)) + ' active permissions'\n";
+              sql += "END\n";
+              sql += "ELSE\n";
+              sql += `    PRINT 'NOT FOUND: AccessibleResource for ${entry.path} - ${entry.action} does not exist or was already deleted'\n\n`;
+            });
+          }
+
+          sql += "PRINT 'Rollback completed successfully!'\n";
+          sql +=
+            "PRINT 'AccessibleResources are only deleted if no other RolePermissions reference them.'\n";
+
+          document.getElementById("rollbackOutputText").value = sql;
         }
 
         // Helper Functions =========================================================================
